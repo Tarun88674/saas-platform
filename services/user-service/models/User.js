@@ -6,13 +6,16 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true
     },
-    name: {
-      type: String
-    },
+    name: String,
     tenantId: {
       type: String,
       required: true,
       index: true
+    },
+    role: {
+      type: String,
+      enum: ["ADMIN", "EMPLOYEE"],
+      default: "EMPLOYEE"
     },
     status: {
       type: String,
@@ -22,7 +25,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound index for fast tenant-based lookup
 userSchema.index({ tenantId: 1, email: 1 }, { unique: true });
 
 module.exports = mongoose.model("User", userSchema);

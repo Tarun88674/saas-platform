@@ -12,13 +12,15 @@ connectDB();
 
 // GraphQL Schema
 const typeDefs = gql`
-  type User @key(fields: "id") {
-    id: ID!
-    email: String!
-    name: String
-    tenantId: ID!
-    status: String!
-  }
+ type User @key(fields: "id") {
+  id: ID!
+  email: String!
+  name: String
+  tenantId: ID!
+  role: String!
+  status: String!
+}
+
 
   type Query {
     users: [User!]!
@@ -27,6 +29,8 @@ const typeDefs = gql`
 
   type Mutation {
     createUser(email: String!, name: String): User!
+      createAdminUser(email: String!, name: String!, tenantId: ID!): User!
+
   }
 `;
 
@@ -67,6 +71,16 @@ Mutation: {
 
     return user;
   },
+  createAdminUser: async (_, { email, name, tenantId }) => {
+  const admin = await User.create({
+    email,
+    name,
+    tenantId,
+    role: "ADMIN"
+  });
+  return admin;
+}
+
 },
 
 
