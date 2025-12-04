@@ -1,72 +1,96 @@
-// services/user-service/index.js
+require("dotenv").config();
+const { ApolloServer } = require("@apollo/server");
+const { startStandaloneServer } = require("@apollo/server/standalone");
+const { gql } = require("graphql-tag");
+const { buildSubgraphSchema } = require("@apollo/subgraph");
 
-const { ApolloServer } = require('@apollo/server');
-const { startStandaloneServer } = require('@apollo/server/standalone');
-const { gql } = require('graphql-tag');
-const { buildSubgraphSchema } = require('@apollo/subgraph');
+const connectDB = require("./db");
+const User = require("./models/User");
 
-// 1) Schema
+// Connect MongoDB
+connectDB();
+
+// GraphQL Schema
 const typeDefs = gql`
   type User @key(fields: "id") {
     id: ID!
     email: String!
     name: String
     tenantId: ID!
+    status: String!
   }
 
   type Query {
-    users(tenantId: ID!): [User!]!
+    users: [User!]!
     me: User
   }
 
   type Mutation {
-    createUser(email: String!, name: String, tenantId: ID!): User!
+    createUser(email: String!, name: String): User!
   }
 `;
-
-const users = [
-  { id: "u1", email: "a@x.com", name: "Alpha", tenantId: "t1" },
-  { id: "u2", email: "b@x.com", name: "Beta", tenantId: "t1" },
-];
 
 const resolvers = {
   User: {
     __resolveReference(ref) {
-      return users.find((u) => u.id === ref.id);
-    },
+      return User.findById(ref.id);
+    }
   },
 
-  Query: {
-    users(_, { tenantId }) {
-      return users.filter((u) => u.tenantId === tenantId);
-    },
-    me() {
-      return users[0];
-    },
+Query: {
+  async users(_, __, context) {
+    if (!context.tenantId) {
+      throw new Error("Tenant ID required");
+    }
+    return User.find({ tenantId: context.tenantId });
   },
 
-  Mutation: {
-    createUser(_, { email, name, tenantId }) {
-      const user = {
-        id: `u${users.length + 1}`,
-        email,
-        name,
-        tenantId,
-      };
-      users.push(user);
-      return user;
-    },
+  async me(_, __, context) {
+    if (!context.tenantId) {
+      throw new Error("Tenant ID required");
+    }
+    return User.findOne({ tenantId: context.tenantId });
+  }
+},
+
+Mutation: {
+  async createUser(_, { email, name }, context) {
+    if (!context.tenantId) {
+      throw new Error("Tenant ID required");
+    }
+
+    const user = await User.create({
+      email,
+      name,
+      tenantId: context.tenantId,
+    });
+
+    return user;
   },
+},
+
+
 };
 
-// 2) Create subgraph schema
 const server = new ApolloServer({
-  schema: buildSubgraphSchema({ typeDefs, resolvers }),
+  schema: buildSubgraphSchema({ typeDefs, resolvers })
 });
 
-// 3) Standalone server
 startStandaloneServer(server, {
   listen: { port: 4001 },
+context: async ({ req }) => {
+  const tenantId = req.headers["x-tenant-id"];
+
+  console.log("✅ Tenant received at User Service:", tenantId);
+
+  if (!tenantId) {
+    return { tenantId: null, isIntrospection: true };
+  }
+
+  return { tenantId, isIntrospection: false };
+}
+
+
 }).then(({ url }) => {
   console.log(`🚀 User Subgraph running at ${url}`);
 });
