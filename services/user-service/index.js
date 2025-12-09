@@ -16,6 +16,10 @@ const { ApolloServer } = require("@apollo/server");
 const { startStandaloneServer } = require("@apollo/server/standalone");
 const { gql } = require("graphql-tag");
 const { buildSubgraphSchema } = require("@apollo/subgraph");
+const {
+  requireAuth,
+  requirePermission
+} = require("./rbac/guard");
 
 const connectDB = require("./db");
 const User = require("./models/User");
@@ -73,47 +77,57 @@ const resolvers = {
     }
   },
 
-  Query: {
-    users: async (_, __, { user }) => {
-      console.log("✅ user in users resolver:", user);
+//   Query: {
+//     users: async (_, __, { user }) => {
+//       console.log("✅ user in users resolver:", user);
 
-      if (!user || !user.tenantId) {
-        throw new Error("Unauthorized");
-      }
+//       if (!user || !user.tenantId) {
+//         throw new Error("Unauthorized");
+//       }
 
-      return User.find({ tenantId: user.tenantId });
-    },
+//       return User.find({ tenantId: user.tenantId });
+//     },
 
-    me: async (_, __, { user }) => {
-      if (!user || !user.id) {
-        throw new Error("Unauthorized");
-      }
+//     me: async (_, __, { user }) => {
+//       if (!user || !user.id) {
+//         throw new Error("Unauthorized");
+//       }
 
-      return User.findById(user.id);
-    }
+//       return User.findById(user.id);
+//     }
+//   },
+Query: {
+  users: async (_, __, { user }) => {
+    console.log("✅ user in users resolver:", user);
+
+    requirePermission(user, "USER_READ_ALL");
+
+    return User.find({ tenantId: user.tenantId });
   },
+
+  me: async (_, __, { user }) => {
+    requirePermission(user, "PROFILE_READ");
+
+    return User.findById(user.id);
+  }
+},
 
   Mutation: {
     // ✅ ADMIN → Create Employee
-    createUser: async (_, { email, name }, { user }) => {
-      if (!user || !user.tenantId) {
-        throw new Error("Unauthorized");
-      }
+   createUser: async (_, { email, name }, { user }) => {
+  requirePermission(user, "USER_CREATE");
 
-      if (user.role !== "ADMIN") {
-        throw new Error("Only admin can create users");
-      }
+  const hashedPassword = await bcrypt.hash("Default@123", 10);
 
-      const hashedPassword = await bcrypt.hash("Default@123", 10);
+  return User.create({
+    email,
+    name,
+    tenantId: user.tenantId,
+    role: "EMPLOYEE",
+    password: hashedPassword
+  });
+},
 
-      return User.create({
-        email,
-        name,
-        tenantId: user.tenantId,
-        role: "EMPLOYEE",
-        password: hashedPassword
-      });
-    },
 
     // ✅ SYSTEM → Create Admin
     createAdminUser: async (_, { email, name, tenantId }) => {
